@@ -73,17 +73,21 @@ addSaveMethod = method(Options => {
 	Name => toString @@ class,
 	Namespace => "Macaulay2"})
 
+getType = method()
+getType(Function, Thing) := (f, x) -> f x
+getType(String,   Thing) := (s, x) -> s
+
 addSaveMethod Type := o -> T -> (
     installMethod((toMRDI, o.Namespace), T, x -> (
 	    if o.UseID then thingToUuid x;
-	    hashTable {"_type" => o.Name x},
+	    hashTable {"_type" => getType(o.Name, x)},
 	    {}));
     T#(UseID, o.Namespace) = o.UseID)
 addSaveMethod(Type, Function) := o -> (T, dataf) -> (
     installMethod((toMRDI, o.Namespace), T, x -> (
 	    if o.UseID then thingToUuid x;
 	    hashTable {
-		"_type" => o.Name x,
+		"_type" => getType(o.Name, x),
 		"data" => dataf x},
 	    {}));
     T#(UseID, o.Namespace) = o.UseID)
@@ -98,7 +102,7 @@ addSaveMethod(Type, Function, Function) := o -> (T, paramsf, dataf) -> (
 	    (
 		hashTable {
 		    "_type" => hashTable {
-			"name" => o.Name x,
+			"name" => getType(o.Name, x),
 			"params" => mrdi},
 		    "data" => dataf x},
 		refs)));
@@ -144,7 +148,7 @@ addSaveMethod(RingElement,
     ring,
     f -> apply(listForm f,
 	(exps, coeff) -> (toString \ exps, toString coeff)),
-    Name => f -> "RingElement")
+    Name => "RingElement")
 
 addSaveMethod(Ideal,
     ring,
@@ -267,13 +271,13 @@ addSaveMethod(Ring,
 addSaveMethod(ZZ,
     x -> ZZ,
     toString,
-    Name => x -> "ZZRingElem",
+    Name => "ZZRingElem",
     Namespace => "Oscar")
 
 addSaveMethod(QQ,
     x -> QQ,
     x -> concatenate(toString numerator x, "//", toString denominator x),
-    Name => x -> "QQFieldElem",
+    Name => "QQFieldElem",
     Namespace => "Oscar")
 
 -- Oscar differentiates between univariate and multivariate polynomial rings,
@@ -281,14 +285,14 @@ addSaveMethod(QQ,
 addSaveMethod(PolynomialRing,
     baseRing,
     R -> hashTable {"symbols" => toString \ gens R},
-    Name => R -> "MPolyRing",
+    Name => "MPolyRing",
     UseID => true,
     Namespace => "Oscar")
 
 addSaveMethod(RingElement,
     ring,
     f -> apply(listForm f, mon -> {toString \ mon#0, toString mon#1}),
-    Name => x -> "MPolyRingElem",
+    Name => "MPolyRingElem",
     Namespace => "Oscar")
 
 addLoadMethod("Base.Int", (params, data, f) -> value data, Namespace => "Oscar")
@@ -450,7 +454,7 @@ addSaveMethod(RingElement,
 	apply(listForm f, mon -> {
 		mon#1,
 		apply(select(#mon#0, i -> mon#0#i != 0), j -> {j, mon#0#j})})),
-    Name => f -> "Lean.Grind.CommRing.Poly",
+    Name => "Lean.Grind.CommRing.Poly",
     Namespace => "Lean")
 
 addLoadMethod("Lean.Grind.CommRing.Poly",
