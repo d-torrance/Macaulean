@@ -1,31 +1,51 @@
-path |= {"~/src/macaulay2/Macaulean/m2"}
 needsPackage "MRDI"
-check oo
 
 addNamespace("Lean", "https://github.com/leanprover/lean4", "4.26.0-rc1")
 
-addSaveMethod(RingElement,
-    g -> null,
-    f -> apply(listForm f, (mon, coeff) -> {
-	toString coeff,
-	apply(positions(mon, not zero), i -> {
-		toString i,
-		toString mon#i})}),
-    Name => "ConcretePoly",
+M2toLean = method()
+M2toLean QQ := x -> {toString numerator x, toString denominator x}
+M2toLean Ring := R -> (
+    if R === QQ then "Rat"
+    else error "unknown ring")
+
+-- helper class
+-- each instance is a list w/ 2 elements:
+-- * a LeanGrindCommRingPoly object (coefficients => new variables)
+-- * coefficient map (list of 2-element lists)
+-- * coefficient ring
+
+ConcretePoly = new SelfInitializingType of List
+LeanGrindCommRingPoly = new SelfInitializingType of List
+
+new ConcretePoly from RingElement := (T, f) -> (
+	coeffmap := new MutableHashTable;
+	R := ring f;
+	n := numgens R;
+	new T from {
+	    LeanGrindCommRingPoly apply(listForm f, (mon, coeff) -> (
+		    coeffmap#coeff ??= first(toString n, n += 1);
+		    append(apply(positions(mon, not zero), i -> {
+				toString i,
+				toString mon#i}),
+			{coeffmap#coeff, "1"}))),
+	    apply(pairs coeffmap, (a, i) -> {i, M2toLean a}),
+	    M2toLean coefficientRing R})
+
+addSaveMethod(LeanGrindCommRingPoly,
+    identity,
+    Namespace => "Lean",
+    UseID => true)
+
+addSaveMethod(ConcretePoly,
+    f -> f#2,
+    f -> hashTable {
+	"poly" => f#0,
+	"coefficients" => f#1},
     Namespace => "Lean")
 
-R = ZZ[x,y,z]
-f = 3 + 5*z^3
+saveMRDI(ConcretePoly f, Namespace => "Lean", ToString => false)
 
-saveMRDI(f, Namespace => "Lean")
-errorDepth = 1
-apply(listForm f, (mon, coeff) -> {
-	toString coeff,
-	apply(positions(mon, not zero), i -> {
-		toString i,
-		toString mon#i})})
-		    
-
+-- TODO: check data and mrdi-fy if necessary
 
 end
 
