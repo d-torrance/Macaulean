@@ -64,3 +64,20 @@ mrdi = saveMRDI(f, Namespace => "Lean")
 g = loadMRDI mrdi
 phi = map(R, ring g, vars R)
 assert Equation(phi g, f)
+
+end
+
+{"data": [[3, []], [5, [[2, 3]]], [0, []]],
+ "_type": "Lean.Grind.CommRing.Poly",
+"_ns": {"Lean": ["https://github.com/leanprover/lean4", "4.26.0-rc1"]}}
+
+
+{"data":
+ {"poly": "bf9837e6-468a-41df-a270-aea8d4a747e8",
+  "coefficients": [[0, [1, 2]]]},
+ "_type": {"params": "Rat", "name": "ConcretePoly"},
+ "_refs":
+ {"bf9837e6-468a-41df-a270-aea8d4a747e8":
+  {"data": [[3, [[0, 1], [2, 2]]], [1, [[0, 1], [1, 2]]], [1, []]],
+   "_type": "Lean.Grind.CommRing.Poly"}},
+ "_ns": {"Lean": ["https://github.com/leanprover/lean4", "4.26.0-rc1"]}}
