@@ -1,6 +1,40 @@
+path |= {"~/src/macaulay2/Macaulean/m2"}
 needsPackage "MRDI"
+check oo
 
-addNamespace("Lean", "https://github.com/leanprover/lean4", "4.27.0")
+addNamespace("Lean", "https://github.com/leanprover/lean4", "4.26.0-rc1")
+
+addSaveMethod(RingElement,
+    g -> null,
+    f -> apply(listForm f, (mon, coeff) -> {
+	toString coeff,
+	apply(positions(mon, not zero), i -> {
+		toString i,
+		toString mon#i})}),
+    Name => "ConcretePoly",
+    Namespace => "Lean")
+
+R = ZZ[x,y,z]
+f = 3 + 5*z^3
+
+saveMRDI(f, Namespace => "Lean")
+errorDepth = 1
+apply(listForm f, (mon, coeff) -> {
+	toString coeff,
+	apply(positions(mon, not zero), i -> {
+		toString i,
+		toString mon#i})})
+		    
+
+
+end
+
+{"data": [[3, []], [5, [[2, 3]]], [0, []]],
+ "_type": "Lean.Grind.CommRing.Poly",
+"_ns": {"Lean": ["https://github.com/leanprover/lean4", "4.26.0-rc1"]}}
+
+
+end
 
 leanRings = hashTable {
     QQ => "Rat",
