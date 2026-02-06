@@ -26,7 +26,9 @@ export {
     "UseID",
     }
 
-importFrom(Core, "nullf")
+importFrom(Core, {
+	"noMethod",
+	"nullf"})
 
 ------------
 -- saving --
@@ -56,19 +58,56 @@ loadMethods = new MutableHashTable
 addNamespace = method()
 addNamespace(String, String, String) := (ns, url, v) -> (
     namespaces#ns = (url, v);
-    loadMethods#ns = new MutableHashTable;)
+    loadMethods#ns = new MutableHashTable;
+    Thing#{ns, UseID} = false;)
 
 addNamespace("Macaulay2", "https://macaulay2.com", version#"VERSION")
 addNamespace("Oscar", "https://github.com/oscar-system/Oscar.jl", "1.6.0")
 
--- low-level unexported method
--- input: string ns (namespace), some object x
--- returns a pair (mrdi, refs)
--- mdri = hash table representing x (type & data only)
--- refs = list of hash tables representing x's refs (type & data only)
+-- low-level unexported function
+-- input: ns: string (namespace)
+--        x: the object to serialize
+--        refs: mutable hash table (keys = uuids of refs)
+-- output: hash table representing x (type & data only)
+-- side effect: new refs are added to refs
 -- use addSaveMethod to define for a given class
-toMRDI = method()
-toMRDI(String, Thing) := (ns, x) -> (lookup({ns, toMRDI}, class x)) x
+toMRDI = (ns, x, refs) -> (
+    if (f := lookup({ns, toMRDI}, class x)) === null
+    then error noMethod({ns, toMRDI}, x,)
+    else f(x, refs))
+
+useID = (ns, x) -> (
+    if (u := lookup({ns, UseID}, class x)) === null
+    then error noMethod({ns, UseID}, x,)
+    else if not instance(u, Boolean)
+    then error("expected ", {ns, UseID}, " for ", class x,
+	" to be true or false")
+    else u)
+
+toMRDIorUuid = (ns, x, refs) -> (
+    r := toMRDI(ns, x, refs);
+    if useID(ns, x) then (
+	i := thingToUuid x;
+	refs#i = r;
+	i)
+    else r)
+
+-- low-level unexported method
+-- same interface as toMRDI, but attempts to separate out objects we'd like
+-- to serialize from json-level objects that we're using to describe
+-- other objects
+processMRDI = method()
+processMRDI(String, Thing, MutableHashTable) := toMRDIorUuid
+processMRDI(String, String, MutableHashTable) := (ns, x, refs) -> x
+processMRDI(String, Nothing, MutableHashTable) := (ns, x, refs) -> null
+processMRDI(String, ZZ, MutableHashTable) := (ns, x, refs) -> toString x
+processMRDI(String, List, MutableHashTable) := (ns, x, refs) -> (
+    if class x === List then apply(x, y -> processMRDI(ns, y, refs))
+    else toMRDIorUuid(ns, x, refs))
+processMRDI(String, HashTable, MutableHashTable) := (ns, x, refs) -> (
+    if class x === HashTable then applyValues(x, v -> processMRDI(ns, v, refs))
+    else toMRDIorUuid(ns, x, refs))
+
 
 addSaveMethod = method(Options => {
 	UseID => false,
@@ -85,51 +124,35 @@ addSaveMethod Type := o -> T -> (
 addSaveMethod(Type, Function) := o -> (T, dataf) -> (
     addSaveMethod(T, nullf, dataf, o))
 addSaveMethod(Type, Function, Function) := o -> (T, paramsf, dataf) -> (
-    installMethod({o.Namespace, toMRDI}, T, x -> (
-	    if o.UseID then thingToUuid x; -- save uuid
-	    params := paramsf x;
-	    data := dataf x;
-	    if params =!= null then (
-		(mrdi, refs) := toMRDI(o.Namespace, params);
-		if lookup({o.Namespace, UseID}, class params) then (
-		    mrdi = thingToUuid params;
-		    refs = append(refs, mrdi)))
-	    else refs = {};
-	    (
-		hashTable {
-		    "_type" => (
-			if params =!= null then hashTable {
-			    "name" => getType(o.Name, x),
-			    "params" => mrdi}
-			else getType(o.Name, x)),
-		    if data =!= null then "data" => data},
-		refs)));
+    T#{o.Namespace, toMRDI} = (x, refs) -> (
+	if o.UseID then thingToUuid x; -- save uuid
+	params := processMRDI(o.Namespace, paramsf x, refs);
+	data := processMRDI(o.Namespace, dataf x, refs);
+	hashTable {
+	    "_type" => (
+		if params =!= null then hashTable {
+		    "name" => getType(o.Name, x),
+		    "params" => params}
+		else getType(o.Name, x)),
+	    if data =!= null then "data" => data});
     T#{o.Namespace, UseID} = o.UseID;)
 
-addSaveMethod(Thing, toString)
+addSaveMethod(ZZ, identity)
 
-addSaveMethod(VisibleList, L ->  (
-	mrdis := toMRDI_"Macaulay2" \ L;
-	(
-	    hashTable {
-		"_type" => hashTable {
-		    "name" => toString class L,
-		    "params" => apply(mrdis, (mrdi, ref) -> mrdi#"_type")},
-		"data" => apply(#L, i ->
-		    ?? (uuidsByThing#(L#i) ?? mrdis#i#0#"data"))},
-	    join(
-		flatten apply(mrdis, (mrdi, ref) -> ref),
-		for x in L list uuidsByThing#x ?? continue))))
+addSaveMethod(Ring,
+    R -> (
+	if isMember(R, {ZZ, QQ}) then toString R
+	else error "not implemented yet"))
 
 addSaveMethod(QuotientRing,
     R -> (
-	if isFinitePrimeField R then toString char R
+	if isFinitePrimeField R then char R
 	else error "not implemented yet"))
 
 addSaveMethod(GaloisField,
     F -> hashTable {
-	"char"   => toString F.char,
-	"degree" => toString F.degree},
+	"char"   => F.char,
+	"degree" => F.degree},
     UseID => true)
 
 addSaveMethod(PolynomialRing,
@@ -144,22 +167,14 @@ listForm Number := x -> {({}, x)}
 
 addSaveMethod(RingElement,
     ring,
-    f -> apply(listForm f,
-	(exps, coeff) -> (toString \ exps, toString coeff)),
+    f -> toList \ listForm f,
     Name => "RingElement")
 
 addSaveMethod(Ideal,
     ring,
-    I -> apply(I_*, f -> (
-	    apply(listForm f,
-		(exps, coeff) -> (toString \ exps, toString coeff)))))
+    I -> apply(I_*, f -> toList \ listForm f))
 
-addSaveMethod(Matrix,
-    ring,
-    A -> apply(entries A, row -> (
-	    apply(row, f -> (
-		    apply(listForm f,
-			(exps, coeff) -> (toString \ exps, toString coeff)))))))
+addSaveMethod(Matrix, ring, entries)
 
 saveMRDI = method(
     Dispatch => Thing,
@@ -170,17 +185,14 @@ saveMRDI = method(
 saveMRDI Thing := o -> x -> (
     if not namespaces#?(o.Namespace)
     then error("unknown namespace: ", o.Namespace);
-    (mrdi, refs) := toMRDI(o.Namespace, x);
+    refs := new MutableHashTable;
+    mrdi := toMRDI(o.Namespace, x, refs);
     r := (if o.ToString then toJSON else identity) merge(
 	hashTable {
 	    "_ns" => hashTable {
 		o.Namespace => namespaces#(o.Namespace)},
-	    if lookup({o.Namespace, UseID}, class x)
-	    then "id" => thingToUuid x,
-	    if #refs > 0 then "_refs" => hashTable apply(refs,
-		ref -> ref => first toMRDI(
-		    o.Namespace,
-		    uuidToThing(ref, () -> error("unknown uuid: ", ref))))},
+	    if useID(o.Namespace, x) then "id" => thingToUuid x,
+	    if #refs > 0 then "_refs" => new HashTable from refs},
 	mrdi,
 	(x, y) -> error "unexpected key collision");
     if o.FileName =!= null then o.FileName << r << endl << close;
